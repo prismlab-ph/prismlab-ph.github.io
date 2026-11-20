@@ -103,7 +103,7 @@ footer img{height:44px;display:block;margin:0 auto 10px;opacity:.9}
 <section id="shop">
   <div class="hero">
     <div>
-      <p class="eyebrow">Shipping nationwide via J&amp;T</p>
+      <p class="eyebrow">Shipping nationwide</p>
       <h1>Clear acrylic homes for your inverts</h1>
       <p>Handmade enclosures for tarantulas and other inverts. Order as a guest, or join as a member to get vouchers.</p>
       <a class="btn" href="#products">Shop enclosures</a>
@@ -124,7 +124,7 @@ footer img{height:44px;display:block;margin:0 auto 10px;opacity:.9}
 
 <footer>
   <img src="logo-mark.png" alt="">
-  PRISMLAB &middot; Crafted Enclosures &middot; Shipping nationwide via J&amp;T<br>
+  PRISMLAB &middot; Crafted Enclosures &middot; Shipping nationwide<br>
   <a href="privacy-policy.html">Privacy Policy</a>
 </footer>
 
@@ -187,7 +187,7 @@ footer img{height:44px;display:block;margin:0 auto 10px;opacity:.9}
     <div class="msg" id="vMsg"></div>
     <div class="sum">
       <div><span>Subtotal</span><span id="sSub">₱0.00</span></div>
-      <div><span>Delivery fee (J&amp;T)</span><span id="sShip">Choose a province</span></div>
+      <div><span>Delivery fee</span><span id="sShip">Choose a province</span></div>
       <div><span>Discount</span><span id="sDisc">₱0.00</span></div>
       <div class="t"><span>Total</span><span id="sTot">₱0.00</span></div>
     </div>
@@ -344,7 +344,7 @@ async function loadOrders(){
     <div class="order"><div class="row"><b>${esc(r.order_no)}</b><span class="tag ${esc(r.status)}">${esc(r.status)}</span></div>
     <div style="color:var(--mute);font-size:14px">${new Date(r.created_at).toLocaleDateString("en-PH")} &middot; ${peso(r.total)}</div>
     <div style="font-size:14px;margin-top:4px">${(r.items || []).map(i => esc(i.name) + " x" + i.qty).join(", ")}</div>
-    ${r.tracking_no ? `<div style="font-size:14px;margin-top:4px">J&amp;T tracking: <b>${esc(r.tracking_no)}</b></div>` : ""}</div>`).join("")
+    ${r.tracking_no ? `<div style="font-size:14px;margin-top:4px">Tracking number: <b>${esc(r.tracking_no)}</b></div>` : ""}</div>`).join("")
     : '<div class="empty">No orders yet.</div>';
   const v = await sb.from("vouchers").select("code,type,value,min_spend,expires_at").eq("active", true);
   $("#vouchersList").innerHTML = (v.data && v.data.length) ? v.data.map(r => `
@@ -401,6 +401,7 @@ async function getQuote(){
     try{
       const r = await fetch(CFG.N8N + "/quote", {method:"POST", headers:authHeaders(), body:JSON.stringify({items:cart, province, voucher})});
       quote = await r.json();
+      if (quote.error){ $("#sShip").textContent = "Unavailable"; $("#vMsg").textContent = quote.error; $("#vMsg").className = "msg err"; quote = null; return; }
     }catch(e){ quote = null; $("#sShip").textContent = "Could not get fee"; return; }
   } else {
     // Demo only: replace once n8n is ready. The real fee comes from the server.
