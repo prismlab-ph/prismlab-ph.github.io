@@ -88,6 +88,7 @@ input::placeholder{color:#59616f}
 footer{border-top:1px solid var(--line);padding:28px 20px;text-align:center;color:var(--mute);font-size:13px}
 footer img{height:44px;display:block;margin:0 auto 10px;opacity:.9}
 .hide{display:none!important}
+#proofBox.hide{display:none!important}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
@@ -201,20 +202,29 @@ footer img{height:44px;display:block;margin:0 auto 10px;opacity:.9}
 <dialog id="payDlg">
   <div class="dh"><h2>Pay with QR Ph</h2><button class="x" onclick="payDlg.close()" aria-label="Close">&times;</button></div>
   <div class="db">
-    <div><b>Order <span id="pNo"></span></b> &middot; <span id="pTotal"></span></div>
-    <img class="qr" id="pQr" alt="QR Ph code for payment">
-    <div class="msg" id="pMsg">Open your bank or e-wallet app, scan this QR, and pay the exact amount.</div>
+    <div><b>Order <span id="pNo"></span></b> &middot; <span id="pTotal" style="font:700 20px 'Chakra Petch',sans-serif"></span></div>
+    <img class="qr hide" id="pQr" alt="QR Ph code for payment">
+    <div class="qr hide" id="pQrBox" style="width:260px;height:260px;display:flex;align-items:center;justify-content:center"></div>
+    <a class="btn alt hide" id="pDl" download="prismlab-qr.png" style="justify-self:center">Save QR image</a>
+    <div class="msg" id="pMsg" style="line-height:1.5">Open your bank or e-wallet app, scan this QR, and pay the exact amount.</div>
+    <div id="proofBox" class="hide" style="display:grid;gap:10px">
+      <label>Reference number from your receipt<input id="prRef" placeholder="e.g. 1234567890" autocomplete="off"></label>
+      <label>Screenshot of your receipt (optional, helps us confirm faster)<input id="prFile" type="file" accept="image/*"></label>
+      <div class="msg" id="prMsg"></div>
+      <button class="btn" id="prBtn" onclick="sendProof()">I have paid</button>
+    </div>
   </div>
 </dialog>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 /* ============ SETTINGS: fill these in ============ */
 const CFG = {
-  SUPABASE_URL: "https://prismlab-ph.github.io",       // e.g. https://xxxx.supabase.co
-  SUPABASE_ANON_KEY: "sb_publishable_xpSVOct_wPlKzxCdcpgaQw_Ncs70VbF",  // the public anon key (never the service_role key)
-  N8N: "http://localhost:5678/webhook/quote"                 // e.g. https://your-n8n-domain/webhook  (no slash at the end)
+  SUPABASE_URL: "",       // e.g. https://xxxx.supabase.co
+  SUPABASE_ANON_KEY: "",  // the Publishable key (sb_publishable_...) or the old anon key. Never the secret key
+  N8N: ""                 // e.g. https://your-n8n-domain/webhook  (no slash at the end)
 };
 /* ================================================= */
 
@@ -431,13 +441,54 @@ async function placeOrder(){
     const d = await r.json();
     if (!r.ok || d.error) throw new Error(d.error || "Order failed");
     coDlg.close();
-    $("#pNo").textContent = d.order_no; $("#pTotal").textContent = peso(d.total); $("#pQr").src = d.qr_image;
-    $("#pMsg").textContent = "Open your bank or e-wallet app, scan this QR, and pay the exact amount."; $("#pMsg").className = "msg";
+    $("#pNo").textContent = d.order_no; $("#pTotal").textContent = peso(d.total);
+    if (d.manual) showManual(d);
+    else {
+      $("#pQrBox").classList.add("hide"); $("#proofBox").classList.add("hide"); $("#pDl").classList.add("hide");
+      $("#pQr").classList.remove("hide"); $("#pQr").src = d.qr_image;
+      $("#pMsg").textContent = "Open your bank or e-wallet app, scan this QR, and pay the exact amount."; $("#pMsg").className = "msg";
+    }
     payDlg.showModal();
     cart = []; saveCart();
     pollStatus(d.order_no);
   }catch(e){ err(e.message || "Something went wrong. Try again."); }
   $("#placeBtn").disabled = false;
+}
+let proof = null;
+function showManual(d){
+  proof = {id:d.order_id, no:d.order_no};
+  $("#pQr").classList.add("hide");
+  const box = $("#pQrBox"); box.classList.remove("hide"); box.innerHTML = "";
+  new QRCode(box, {text:d.qr_payload, width:240, height:240, correctLevel:QRCode.CorrectLevel.M});
+  setTimeout(() => { const im = box.querySelector("img"); if (im && im.src){ $("#pDl").href = im.src; $("#pDl").classList.remove("hide"); } }, 200);
+  $("#proofBox").classList.remove("hide"); $("#prBtn").disabled = false; $("#prMsg").textContent = ""; $("#prRef").value = ""; $("#prFile").value = "";
+  $("#pMsg").innerHTML = "1. Open your bank or e-wallet app and tap Scan QR. On this phone? Save the QR image and upload it in the app.<br>2. Make sure the amount is exactly <b>" + peso(d.total) + "</b>.<br>3. Pay, then type the reference number below.";
+  $("#pMsg").className = "msg";
+}
+function shrink(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => { const s = Math.min(1, 1000 / img.width), c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", .75)); };
+    img.onerror = () => rej(new Error("bad image")); img.src = u;
+  });
+}
+async function sendProof(){
+  const ref = $("#prRef").value.trim(), file = $("#prFile").files[0], m = $("#prMsg");
+  const err = t => { m.textContent = t; m.className = "msg err"; };
+  if (!/^[A-Za-z0-9-]{6,40}$/.test(ref)) return err("Enter the reference number from your receipt (letters and numbers only).");
+  $("#prBtn").disabled = true; m.textContent = "Sending..."; m.className = "msg";
+  let image = null;
+  if (file){ try{ image = await shrink(file); }catch(e){ $("#prBtn").disabled = false; return err("Could not read that image. Try another screenshot."); } }
+  try{
+    const r = await fetch(CFG.N8N + "/payment-proof", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({order_id:proof.id, order_no:proof.no, reference:ref, image})});
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || "Failed");
+    $("#proofBox").classList.add("hide"); $("#pQrBox").classList.add("hide"); $("#pDl").classList.add("hide");
+    $("#pMsg").textContent = "Thank you! We are checking your payment. You will get an email once it is confirmed."; $("#pMsg").className = "msg ok";
+    pollStatus(proof.no);
+  }catch(e){ err(e.message || "Something went wrong. Try again."); $("#prBtn").disabled = false; }
 }
 function pollStatus(no){
   clearInterval(pollTimer);
@@ -446,9 +497,13 @@ function pollStatus(no){
     if (++tries > 180 || !payDlg.open) return clearInterval(pollTimer);
     try{
       const d = await (await fetch(CFG.N8N + "/order-status?order_no=" + encodeURIComponent(no))).json();
-      if (d.status && d.status !== "pending"){
+      if (["paid","packed","shipped","delivered"].includes(d.status)){
         clearInterval(pollTimer);
+        $("#proofBox").classList.add("hide"); $("#pQrBox").classList.add("hide"); $("#pQr").classList.add("hide"); $("#pDl").classList.add("hide");
         $("#pMsg").textContent = "Payment received. We sent a confirmation to your email. Thank you!"; $("#pMsg").className = "msg ok";
+      } else if (d.status === "cancelled"){
+        clearInterval(pollTimer);
+        $("#pMsg").textContent = "We could not confirm this payment. Please check your email or message us."; $("#pMsg").className = "msg err";
       }
     }catch(e){}
   }, 5000);
